@@ -69,6 +69,7 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe(f"{name}.in")
         # Send a predefined message on startup
         send_message("Hello, this is a predefined message!")
+        print("Decrypted message: Hello,this is a predefined message!")
     else:
         print(f"Connection failed with error code {rc}")
 
@@ -84,7 +85,7 @@ def on_message(client, userdata, msg):
             chat_text.insert(tk.END, f"Received: {decrypted_message}\n")
             chat_text.see(tk.END)
             root.update_idletasks()
-print("Recieved: Hello,this is a predefined message!")
+
 client.on_connect = on_connect
 client.on_message = on_message
 
