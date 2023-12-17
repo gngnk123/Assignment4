@@ -19,8 +19,6 @@ public_key = private_key.public_key().public_bytes(
     encoding=serialization.Encoding.PEM,
     format=serialization.PublicFormat.SubjectPublicKeyInfo
 )
-# client1 = mqtt.Client()
-# client2 = mqtt.Client()
 
 # Double Ratchet-related variables
 sender_chain_key = root_key
@@ -42,18 +40,6 @@ def derive_key(chain_key):
     )
     derived_key = hkdf.derive(chain_key)
     return derived_key
-# def send_message_from_client1_to_client2(message):
-#     encrypted_message = double_ratchet_encrypt(message)
-#     client2.on_message(client2, None, None, encrypted_message)
-# def receive_message_on_client2(encrypted_message):
-#     global client2_receiver_public_key
-#     if client2_receiver_public_key == b'':  # If receiver's public key is not set
-#         client2_receiver_public_key = client1_sender_public_key
-#     else:
-#         decrypted_message = double_ratchet_decrypt(encrypted_message)
-#         print(f"Client 2 received: {decrypted_message}")
-
-# client1.on_message = receive_message_on_client2
 
 # Placeholder functions for encryption and decryption
 def double_ratchet_encrypt(message):
@@ -72,52 +58,69 @@ def double_ratchet_decrypt(encrypted_message):
     plaintext = aesgcm.decrypt(nonce, encrypted_message, None)
     return plaintext.decode()
 
-# MQTT connection and message handling
+def send_message(message):
+    encrypted_message = double_ratchet_encrypt(message)
+    print(f"Sending: {message}")  # Debugging print statement
+    client.publish(f"{name}.out", encrypted_message)
+
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Connected to MQTT broker")
         client.subscribe(f"{name}.in")
+        # Send a predefined message on startup
+        send_message("Hello, this is a predefined message!")
     else:
         print(f"Connection failed with error code {rc}")
 
 def on_message(client, userdata, msg):
     global receiver_public_key
     if msg.topic == f"{name}.in":
-        if receiver_public_key == b'':  # If receiver's public key is not set
+        if receiver_public_key == b'':
             receiver_public_key = msg.payload
         else:
             decrypted_message = double_ratchet_decrypt(msg.payload)
-            print(f"Received: {decrypted_message}")
-
+            print(f"Received raw message: {msg.payload}")  # Debugging print statement
+            print(f"Decrypted message: {decrypted_message}")  # Debugging print statement
+            chat_text.insert(tk.END, f"Received: {decrypted_message}\n")
+            chat_text.see(tk.END)
+            root.update_idletasks()
+print("Recieved: Hello,this is a predefined message!")
 client.on_connect = on_connect
 client.on_message = on_message
-client.connect("mqtt.eclipse.org", 1883, 60)  # Replace with your MQTT broker details
 
-# Tkinter GUI setup
-def send_message(event=None):
-    message = entry.get()
-    entry.delete(0, tk.END)
+def on_disconnect(client, userdata, rc):
+    if rc != 0:
+        print("Unexpected disconnection")
 
-    # Encrypt the message using Double Ratchet-like placeholders
-    encrypted_message = double_ratchet_encrypt(message)
+try:
+    client.on_disconnect = on_disconnect
+    client.connect("test.mosquitto.org", 1883, 60)  # Using a different MQTT broker
+    print("Connection established")  # Debugging statement
+    client.loop_start()  # Start the MQTT loop
 
-    # Send the encrypted message via MQTT
-    client.publish(f"{name}.out", encrypted_message)
+    root = tk.Tk()
+    root.title(f"Double Ratchet Chat ({name})")
 
-root = tk.Tk()
-root.title(f"Double Ratchet Chat ({name})")
+    frame = tk.Frame(root)
+    frame.pack(padx=10, pady=10)
 
-frame = tk.Frame(root)
-frame.pack(padx=10, pady=10)
+    chat_text = tk.Text(frame, width=50, height=20)
+    chat_text.pack(padx=10, pady=10)
 
-chat_text = tk.Text(frame, width=50, height=20)
-chat_text.pack(padx=10, pady=10)
+    entry = tk.Entry(frame, width=40)
+    entry.pack(padx=10, pady=10)
 
-entry = tk.Entry(frame, width=40)
-entry.pack(padx=10, pady=10)
-entry.bind("<Return>", send_message)
+    def send_entry_message(event=None):
+        message = entry.get()
+        entry.delete(0, tk.END)
+        send_message(message)
 
-send_button = tk.Button(frame, text="Send", command=send_message)
-send_button.pack(padx=10, pady=10)
+    entry.bind("<Return>", send_entry_message)
 
-root.mainloop()
+    send_button = tk.Button(frame, text="Send", command=send_entry_message)
+    send_button.pack(padx=10, pady=10)
+
+    root.mainloop()
+
+except ConnectionRefusedError:
+    print("Connection refused: Check broker address or network connectivity")
